@@ -62,17 +62,17 @@ class CovStats():
         for i in range(3, len(self.counts)):
             bc = self.counts[i][1] / scale
             pct = bc / genomesize
-            sys.stdout.write("Bases covered at {:3}X: {:,}bp ({:.1f}%)\n".format(self.counts[i][0], int(bc), 100.0 * pct))
+            sys.stdout.write("Bases covered at {:3}X: {:,}bp ({:.2f}%)\n".format(self.counts[i][0], int(bc), 100.0 * pct))
             
         bc = self.counts[0][1] / scale
         pct = bc / genomesize
-        sys.stdout.write("25th percentile - bases covered at {}X: {:,}bp ({:.1f}%)\n".format(self.counts[0][0], int(bc), 100.0 * pct))
+        sys.stdout.write("25th percentile - bases covered at {}X: {:,}bp ({:.2f}%)\n".format(self.counts[0][0], int(bc), 100.0 * pct))
         bc = self.counts[1][1] / scale
         pct = bc / genomesize
-        sys.stdout.write("50th percentile - bases covered at {}X: {:,}bp ({:.1f}%)\n".format(self.counts[1][0], int(bc), 100.0 * pct))
+        sys.stdout.write("50th percentile - bases covered at {}X: {:,}bp ({:.2f}%)\n".format(self.counts[1][0], int(bc), 100.0 * pct))
         bc = self.counts[2][1] / scale
         pct = bc / genomesize
-        sys.stdout.write("75th percentile - bases covered at {}X: {:,}bp ({:.1f}%)\n".format(self.counts[2][0], int(bc), 100.0 * pct))
+        sys.stdout.write("75th percentile - bases covered at {}X: {:,}bp ({:.2f}%)\n".format(self.counts[2][0], int(bc), 100.0 * pct))
 
 class SNPsite():
     truepos = 0
@@ -194,15 +194,22 @@ def usage1():
 
 Usage: simcov.py [options]
 
+This program places simulated short reads on a genome and computes
+the resulting average coverage and other statistics. It can optionally
+simulate the presence of variant sites and compute average coverage
+over them (useful to plan variant detection experiments). Use the 
+-d option to run with default parameters and see an output example.
+
 Options:
 
-  -l L | Set read length to L (defalt: {})
-  -n N | Set number of reads to N (default: {})
-  -g G | Set target genome size to G (default: {})
-  -p   | Enable paired-end mode (default: single-end)
-  -t T | Set insert size to T in paired-end mode (default: {})
-  -f F | Set site frequency to F (default: no site analysis)
-  -s S | Set simulation vector size to S (default: {})
+  -d   | Run with default paramers (demo).
+  -l L | Set read length to L (defalt: {}).
+  -n N | Set number of reads to N (default: {}).
+  -g G | Set target genome size to G (default: {}).
+  -p   | Enable paired-end mode (default: single-end).
+  -t T | Set insert size to T in paired-end mode (default: {}).
+  -f F | Set site frequency to F (default: no site analysis).
+  -s S | Set simulation vector size to S (default: {}).
 
 Values for -l, -n, -g and -t can be followed by G (for billion) or M (for million).
 The value for -f can be expressed as a float or a fraction (e.g. 1/8)
@@ -225,7 +232,6 @@ Options:
   -rl L | Read length (default: {}).
   -i  I | Average insert size (default: {}).
   -is S | Standard deviation of insert size (default: {}).
-  -e  E | Set sequencing error rate to E (default: {}).
   -qs S | Average quality at first base (default: {}).
   -qe E | Average quality at last base (default: {}).
   -qv V | Quality standard deviation at last base (default: {}).
@@ -236,7 +242,7 @@ Options:
 
 The value for -nr can be followed by G (for billion) or M (for million).
 
-    """.format(SimReads.seqname, SimReads.nreads, SimReads.readlen, SimReads.insertSize, SimReads.insertStdev, SimReads.errRate, SimReads.qstart, SimReads.qend, SimReads.qvend, SimReads.outfile, SimREads.snpfile))
+""".format(SimReads.seqname, SimReads.nreads, SimReads.readlen, SimReads.insertSize, SimReads.insertStdev, SimReads.qstart, SimReads.qend, SimReads.qvend, SimReads.outfile, SimReads.snpfile))
 
 def usage3():
     sys.stdout.write("""simseq.py - Generate random sequence.
@@ -250,17 +256,17 @@ Options:
   -sn S | Name of sequence (default: {}).
   -l L  | Set sequence length to L (default: {})
 
-The Value for -l can be followed by G (for billion) or M (for million).
+The value for -l can be followed by G (for billion) or M (for million).
 
 """.format(SimReads.seqname, SimReads.seqlen))
 
 def usage4():
     sys.stdout.write("""simfastq.py - Generate random short reads with known quality scores
 
-Usage: simfastq.py [options] filename.fa infile1.fastq[.gz]
+Usage: simfastq.py [options] filename.fa infile.fastq[.gz]
 
 Write randomly-generated reads from the reference sequence in `filename.fa', taking
-read length and qualities from existing fastq file(s). For each read in infile1, 
+read length and qualities from existing fastq file(s). For each read in infile, 
 the program will generate a random read from the reference sequence having the
 same read name and length, and the same quality scores. Bases in the read will be 
 mutated at random based on the quality score. For example, if in the original read 
