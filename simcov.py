@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import csv
 import math
 import os.path
 import random
@@ -171,22 +172,24 @@ class SNPstats():
 def usage0():
     sys.stdout.write("""simcov.py - Short reads simulator.
 
-This program can be used in three different modes. The mode can be selected
-using one of the command-line options -C, -R, and -S, or by invoking this 
+This program can be used in four different modes. The mode can be selected
+using one of the command-line options -C, -R, -S, or -F, or by invoking this 
 program through a symlink with the appropriate name. The following table 
 describes each mode and how to select it:
 
 Opt | Symlink  | Description
 ----+----------+---------------------------------------
- -C | simcov   | Simulate short-read coverage (default)
- -S | simseq   | Generate a random reference sequence
- -R | simreads | Generate simulated short reads
+ -C | simcov   | Simulate short-read coverage (default).
+ -S | simseq   | Generate a random reference sequence.
+ -R | simreads | Generate simulated short reads.
+ -F | simfastq | Generate simulated short reads with 
+               | quality scores from an existing fastq.
 
 Note that only the basename of the link is used, so for example both `simseq' 
-and  `simseq.py' would invoke simseq mode.
+and `simseq.py' would invoke simseq mode.
 """)
         
-def usage():
+def usage1():
     sys.stdout.write("""simcov.py - Simulate short read coverage.
 
 Usage: simcov.py [options]
@@ -250,6 +253,33 @@ Options:
 The Value for -l can be followed by G (for billion) or M (for million).
 
 """.format(SimReads.seqname, SimReads.seqlen))
+
+def usage4():
+    sys.stdout.write("""simfastq.py - Generate random short reads with known quality scores
+
+Usage: simfastq.py [options] filename.fa infile1.fastq[.gz]
+
+Write randomly-generated reads from the reference sequence in `filename.fa', taking
+read length and qualities from existing fastq file(s). For each read in infile1, 
+the program will generate a random read from the reference sequence having the
+same read name and length, and the same quality scores. Bases in the read will be 
+mutated at random based on the quality score. For example, if in the original read 
+a base has a Q score of 20, that base will have a 0.01 probability of being changed 
+in the output.
+
+If input is paired-end, simply run this program twice on the R1 and R2 files. Output 
+is written to file `outfile'.fastq.gz.
+
+Options:
+
+  -o O | Use O as base name for output file (default: {}).
+
+NOTE: if the reference file contains multiple sequences, there is a small chance
+that the output will contain characters from the sequence names. To avoid this,
+please index the reference file with `samtools faidx'. If the .fai file is present,
+simfastq will read it automatically and will use it to skip the sequence headers.
+
+""".format(SimFastq.outfile))
 
 class Simcov(Script):
     readlen = 150
@@ -382,6 +412,7 @@ class SeqSource(object):
     linewidth = 0
     insertSize = 400
     insertStdev = 10
+    skip = []
     filename = None
     stream = None
 
@@ -389,13 +420,39 @@ class SeqSource(object):
         self.filename = filename
         self.readlen = readlen
         self.getBounds()
-    
+        self.skip = []
+        idx = filename + ".fai"
+        if os.path.isfile(idx):
+            self.readFai(idx)
+            
     def __enter__(self):
         self.stream = open(self.filename, "r")
         return self.stream
 
     def __exit__(self, type, value, tb):
         self.stream.close()
+
+    def readFai(self, faifilename):
+        sys.stderr.write("Reading FASTA index {}...\n".format(faifilename))
+        x = 0
+        with open(faifilename, "r") as i:
+            c = csv.reader(i, delimiter='\t')
+            for line in c:
+                size = int(line[1])
+                start = int(line[2])
+                r1 = int(line[3])
+                r2 = int(line[4])
+                self.skip.append([x, start])
+                (nrows, remd) = divmod(size, r1)
+                nch = nrows * r2 + remd
+                x = start + nch + 1
+
+    def isValid(self, start, end):
+        """Return True if the interval [start, end] does not overlap with any region in the skip list."""
+        for s in self.skip:
+            if start <= s[0] <= end or start <= s[1] <= end:
+                return False
+        return True
     
     def getBounds(self):
         fl = os.path.getsize(self.filename)
@@ -405,7 +462,7 @@ class SeqSource(object):
             self.fpstart = f.tell()
             r = f.readline()
             self.linewidth = len(r)
-
+            
     def fpToPos(self, fp):
         nrows = (fp - self.fpstart) / self.linewidth # exploit integer division
         return fp - nrows - self.fpstart + 1
@@ -420,17 +477,24 @@ a random insert size, having mean insertSize and standard deviation insertStdev.
         insize = np.random.normal(self.insertSize, self.insertStdev)
         while True:
             start = random.randint(self.fpstart, self.fpend)
-            if start + insize < self.fpend:
-                return (start, start + insize - self.readlen)
+            end   = start + insize
+            if end < self.fpend and self.isValid(start, end):
+                return (start, end - self.readlen)
 
     def getOneRead(self, pos, probs):
+        """Return a read starting at `pos' with the length contained in the `readlen' attribute, with the 
+base qualities specified in `probs'. If the read would overlap a header line, return False."""
+        if not self.isValid(pos, pos + self.readlen):
+            return False
         bases = []
         f = self.stream
         f.seek(pos)
         n = 0
         while True:
             b = f.read(1)
-            if b == "\n":
+            if b == '>':
+                return False
+            if b not in "ACGTNXacgtnx":
                 continue
             if random.random() < probs[n]:
                 while True:
@@ -445,12 +509,16 @@ a random insert size, having mean insertSize and standard deviation insertStdev.
         return bases
             
     def writeOneRead(self, pos, probs, out):
+        """Like getOneRead, but writes the sequence to stream `out' instead of returning it. If
+the read would overlap a header line, return False without writing anything."""
+        if not self.isValid(pos, pos + self.readlen):
+            return False
         f = self.stream
         f.seek(pos)
         n = 0
         while True:
             b = f.read(1)
-            if b == "\n":
+            if b not in "ACGTNXacgtnx":
                 continue
             if random.random() < probs[n]:
                 while True:
@@ -462,7 +530,8 @@ a random insert size, having mean insertSize and standard deviation insertStdev.
             n += 1
             if n == self.readlen:
                 break
-            
+        return True
+    
 class SimReads(Script, SeqSource):
     readlen = 150
     seqlen = 1000000
@@ -695,14 +764,11 @@ class SimReads(Script, SeqSource):
     def run2(self):
         self.makeRandomSeq()
 
-# Generate random reads with quality         
+# Generate random reads with quality scores taken from an existing fastq file
 class SimFastq(Script):
     reference = None
-    infile1 = None
-    infile2 = None
-    mode = 'single'
-    outfile1 = "reads"
-    outfile2 = None
+    infile = None
+    outfile = "reads.fastq.gz"
     qualprob = []
 
     def init(self):
@@ -716,33 +782,52 @@ class SimFastq(Script):
         return [ self.qualprob[ord(q)] for q in quals ]
             
     def parseArgs(self, args):
+        self.standardOpts(args)
+        prev = ""
         for a in args:
-            if not self.reference:
+            if prev == "-p":
+                self.outfile = a
+                prev = ""
+            elif a in ["-o"]:
+                prev = a
+            elif not self.reference:
                 self.reference = a
-            elif not self.infile1:
-                self.infile1 = a
-            elif not self.infile2:
-                self.infile2 = a
-                self.mode = 'paired'
+            elif not self.infile:
+                self.infile = a
 
     def run(self):
+        sys.stderr.write("Generating reads from reference {} with qualities from {}...\n".format(self.reference, self.infile))
+        if self.outfile:
+            with genOpen(self.outfile, "w") as out:
+                nreads = self.do_simfastq(out)
+                sys.stderr.write("{} reads written to {}.\n".format(nreads, self.outfile))
+        else:
+            self.do_simfastq(sys.stdout)
+            sys.stderr.write("{} reads written to standard output.\n".format(nreads))
+
+    def do_simfastq(self, out):
+        nreads = 0
         src = SeqSource(self.reference, 500) # To make sure we don't go out of bounds (since we don't know readlen yet)
         with src:
-            with genOpen(self.infile1, "r") as f:
+            with genOpen(self.infile, "r") as f:
                 while True:
                     readname = f.readline()
                     if not readname:
                         break
+                    nreads += 1
                     rl = len(f.readline()) - 1
                     src.readlen = rl
                     f.readline()
                     quals = f.readline().strip()
                     probs = self.qualsToProbs(quals)
-                    sys.stdout.write(readname)
-                    src.writeOneRead(src.genPosition(), probs, sys.stdout)
-                    sys.stdout.write("\n+\n")
-                    sys.stdout.write(quals)
-                    sys.stdout.write("\n")
+                    out.write(readname)
+                    while True:
+                        if src.writeOneRead(src.genPosition(), probs, out):
+                            break
+                    out.write("\n+\n")
+                    out.write(quals)
+                    out.write("\n")
+        return nreads
     
 if __name__ == "__main__":
     prog = os.path.splitext(os.path.split(sys.argv[0])[1])[0]
@@ -759,7 +844,7 @@ if __name__ == "__main__":
         usage0()
         sys.exit(1)
     if prog == "simcov":
-        S = Simcov("simcov.py", version="1.0", usage=usage)
+        S = Simcov("simcov.py", version="1.0", usage=usage1)
         S.parseArgs(args)
         S.run()
     elif prog == "simreads":
@@ -779,6 +864,13 @@ if __name__ == "__main__":
         else:
             S.errmsg(S.NOFAFILE)
     elif prog == "simfastq":
-        S = SimFastq("simfastq.py", version="1.0", usage=usage3)
+        S = SimFastq("simfastq.py", version="1.0", usage=usage4,
+                     errors=[('NOREFFILE', 'Missing reference file name', 'The name of the reference file is required.'),
+                             ('NOFQFILE', 'Missing fastq file name', 'The name of the input fastq[.gz] file is required.')])
         S.parseArgs(args)
-        S.run()
+        if not S.reference:
+            S.errmsg(S.NOREFFILE)
+        elif not S.infile:
+            S.errmsg(S.NOFQFILE)
+        else:
+            S.run()
