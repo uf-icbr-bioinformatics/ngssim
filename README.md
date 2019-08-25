@@ -14,7 +14,7 @@ Program               | Opt | Description
 
 The four programs are actually a single executable (simcov.py); the different modes
 can be selected using the command-line option in the Opt column, or creating symbolic
-links to simcov.py with the appropriate name (oonly the basename of the link is used).
+links to simcov.py with the appropriate name (only the basename of the link is used).
 
 For example, to invoke simseq you can either use:
 
@@ -114,13 +114,15 @@ Detected: 378 (37.8%)
 Average squared error: 0.155680669631
 ```
 
-The last line reports the expected error in the estimation of the
+For each simulated SNP, the program computes the observed allelic frequencies, 
+and compares them with the true ones. The last line reports the average squared error in the estimation of the
 allelic frequencies of the simulated SNPs. Higher coverage will
 result in more accurate frequency estimation and therefore a lower
 average.
 
 Note that the number of SNPs is computed on the basis of the size
-of the simulation sequence, and not on the true genome size.
+of the simulation sequence, and not on the true genome size. This has no effect on the displayed percentages and 
+average error.
 
 ## simseq
 
@@ -181,11 +183,13 @@ to outfile_R1.fastq.gz and outfile_R2.fastq.gz.
 In paired-end mode, the program simulates the insert size using the average
 size specified with -i and a standard deviation specified with -is.
 
-Quality scores are simulated using an exponential decay model where average
+Quality scores are simulated using an exponential decay model where mean
 quality scores range from the value set with -qs (at the first base) to the
-value set with -qs (at the last base), and a standard deviation ranging from
-1 to the value set with -qv (at the last base). Bases are subject to random
-change according to the simulated quality scores. For example, a bases with
+value set with -qs (at the last base), and the standard deviation ranges from
+1 to the value set with -qv (at the last base). For example, using default parameters,
+the last base in a read will have a quality score generated from a normal distribution
+with mean 30 and standard deviation 10. Bases are subject to random
+change according to the simulated quality scores. For example, a base with
 a quality score of 20 has a 0.01 probability of being changed.
 
 If -s is used, the program inserts the specified number of SNPs in the reference
@@ -220,7 +224,7 @@ the original read a base has a Q score of 20, that base will have a 0.01 probabi
 of being changed in the output.
 
 If input is paired-end, simply run this program twice on the R1 and R2 files. Output 
-is written to file `outfile'.fastq.gz, where outfile can be changed with the -o option.
+is written to file `outfile`.fastq.gz, where outfile can be changed with the -o option.
 
 NOTE: if the reference file contains multiple sequences, there is a small chance
 that the output will contain characters from the sequence names. To avoid this,
@@ -230,4 +234,8 @@ please index the reference file with samtools:
 samtools faidx reference.fa
 ```
 
-If the .fai file is present, simfastq will read it automatically and will use it to skip the sequence headers.
+If the .fai file for the reference file is present, simfastq will read it automatically 
+and will use it to skip the sequence headers.
+
+## Credits
+**ngssim** is (c) 2019, A. Riva, ICBR Bioinformatics Core, University of Florida.
