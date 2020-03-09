@@ -620,11 +620,12 @@ class SimReads(Script, SeqSource):
             self.outfile = self.outfile + ".fastq.gz"
 
     def initQuality(self):
+        # print (self.qstart, self.qend)
         r = self.qstart - self.qend # range of quality scores
         x = np.power(r, 1.0 / self.readlen)
         q = 1
         for i in range(self.readlen):
-            self.qavgs.append(41-q)
+            self.qavgs.append(self.qstart + 1 - q)
             q *= x
         r = self.qvend - self.qvstart
         x = np.power(r, 1.0 / self.readlen)
@@ -632,7 +633,9 @@ class SimReads(Script, SeqSource):
         for i in range(self.readlen):
             self.qstdevs.append(q)
             q *= x
-        
+        # print self.qavgs
+        # print self.qstdevs
+
     def initSNPs(self):
         if self.nsnps == 0:
             return
